@@ -45,7 +45,7 @@ namespace BusinessRulesEngine.Tests.BusinessRules
         }
 
         [TestMethod]
-        public void ShouldUpdateMembershipInDatabase()
+        public void ShouldActivateMembership()
         {
             var payment = new Payment()
             {
