@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
+using System.Reflection;
 using System.Text;
 
 namespace BusinessRulesEngine.Handlers
@@ -18,36 +19,36 @@ namespace BusinessRulesEngine.Handlers
                 .Where(x => businessRulesProviderType.IsAssignableFrom(x) && !x.IsInterface && !x.IsAbstract)
                 .Select(x =>
                 {
-                    //var parameterlessCtor = x.GetConstructors().SingleOrDefault(c => c.GetParameters().Length == 0);
-                    var constructors = x.GetConstructors().OrderByDescending(x => x.GetParameters().Length);
-                    foreach (var constructor in constructors)
-                    {
-                        var satisfyAll = false;
-                        var paramsInfo = constructor.GetParameters();
-                        List<object> args = new List<object>();
-                        foreach (var param in paramsInfo)
-                        {
-                            if (serviceProvider.GetService(param.ParameterType) != null)
-                            {
-                                args.Add(serviceProvider.GetService(param.ParameterType));
-                                satisfyAll = true;
-                            }
-                            else
-                            {
-                                satisfyAll = false;
-                            }
-                        }
+                    var constructorWithMostParams = x.GetConstructors().OrderByDescending(x => x.GetParameters().Length).First();
+                    var requiredServices = GetRequiredServices(constructorWithMostParams, serviceProvider);
 
-                        if (satisfyAll)
-                        {
-                            return Activator.CreateInstance(x, args.ToArray());
-                        }
+                    if (requiredServices.IsValid)
+                    {
+                        return Activator.CreateInstance(x, requiredServices.Args.ToArray());
                     }
 
                     return Activator.CreateInstance(x);
                 })
                 .Cast<IBusinessRuleHandler>()
                 .ToImmutableDictionary(x => x.HandlerName, x => x);
+        }
+
+        internal (bool IsValid, List<object> Args) GetRequiredServices(ConstructorInfo constructor, IServiceProvider serviceProvider)
+        {
+            var paramsInfo = constructor.GetParameters();
+            List<object> args = new List<object>();
+            foreach (var param in paramsInfo)
+            {
+                var service = serviceProvider.GetService(param.ParameterType);
+
+                if (service == null)
+                {
+                    break;
+                }
+
+                args.Add(service);
+            }
+            return ((args.Count == paramsInfo.Count() && paramsInfo.Count() > 0), args);
         }
 
         public IBusinessRuleHandler GetProviderByName(string businessRuleName)
